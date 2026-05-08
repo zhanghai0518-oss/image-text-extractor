@@ -1,0 +1,97 @@
+{
+  "name": "image-text-extractor",
+  "version": "2.9.20",
+  "description": "图片文字提取工具 - 支持批量处理、字段配置、Excel导出、PDF支持、跨平台OCR",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder",
+    "build-mac": "electron-builder --mac",
+    "build-win": "electron-builder --win",
+    "build-all": "electron-builder --mac --win"
+  },
+  "keywords": [
+    "ocr",
+    "image",
+    "excel",
+    "extractor"
+  ],
+  "author": "OpenClaw",
+  "license": "MIT",
+  "devDependencies": {
+    "electron": "^28.0.0",
+    "electron-builder": "^24.0.0"
+  },
+  "dependencies": {
+    "exceljs": "^4.4.0",
+    "iconv-lite": "^0.7.2"
+  },
+  "build": {
+    "appId": "com.openclaw.image-text-extractor",
+    "productName": "图片文字提取工具",
+    "directories": {
+      "output": "dist"
+    },
+    "extraResources": [
+      {
+        "from": "resources/PaddleOCR-json",
+        "to": "PaddleOCR-json",
+        "filter": ["**/*"]
+      },
+      {
+        "from": "resources/win-ocr.exe",
+        "to": "win-ocr.exe"
+      },
+      {
+        "from": "resources/README.md",
+        "to": "README.md"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.productivity",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ]
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64",
+            "ia32"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "unicode": true,
+      "deleteAppDataOnUninstall": false,
+      "runAfterFinish": true
+    }
+  },
+  "type": "commonjs"
+}

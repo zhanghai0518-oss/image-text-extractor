@@ -1,0 +1,214 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>图片文字提取工具</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div id="app">
+    <!-- 侧边栏 -->
+    <aside class="sidebar">
+      <div class="sidebar-header">
+        <h2>📁 图片列表</h2>
+        <div class="import-buttons">
+          <button id="importImages" class="btn btn-primary">
+            <span>📷 导入图片</span>
+          </button>
+          <button id="importFolder" class="btn btn-secondary">
+            <span>📂 导入文件夹</span>
+          </button>
+        </div>
+      </div>
+      <div class="image-list" id="imageList">
+        <div class="empty-state">
+          <div class="empty-icon">🖼️</div>
+          <p>点击上方按钮导入图片或PDF</p>
+          <p class="hint">支持 JPG, PNG, BMP, GIF, WebP, PDF</p>
+        </div>
+      </div>
+      <div class="sidebar-footer">
+        <span id="imageCount">0 张图片</span>
+        <button id="clearAll" class="btn btn-text btn-danger">清空</button>
+      </div>
+    </aside>
+
+    <!-- 主内容区 -->
+    <main class="main-content">
+      <!-- 顶部工具栏 -->
+      <header class="toolbar">
+        <div class="toolbar-left">
+          <select id="templateSelect" class="template-select">
+            <option value="">选择模板...</option>
+          </select>
+          <button id="editTemplate" class="btn btn-icon" title="编辑模板">⚙️</button>
+        </div>
+        <div class="toolbar-right">
+          <button id="extractAll" class="btn btn-primary" disabled>
+            <span>🔍 提取全部</span>
+          </button>
+          <button id="exportExcel" class="btn btn-success" disabled>
+            <span>📊 导出Excel</span>
+          </button>
+        </div>
+      </header>
+
+      <!-- 内容区域 -->
+      <div class="content-area">
+        <!-- 预览和提取结果区域 -->
+        <div class="preview-section">
+          <div class="preview-header">
+            <h3>图片预览</h3>
+            <span id="currentFileName" class="filename"></span>
+          </div>
+          <div class="preview-container" id="previewContainer">
+            <div class="empty-state">
+              <div class="empty-icon">📄</div>
+              <p>选择左侧图片查看预览</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- 提取结果 -->
+        <div class="result-section">
+          <div class="result-header">
+            <h3>提取结果</h3>
+            <div class="result-actions">
+              <button id="copyResult" class="btn btn-text btn-small">复制</button>
+              <button id="retryExtract" class="btn btn-text btn-small">重新提取</button>
+            </div>
+          </div>
+          <div class="result-container" id="resultContainer">
+            <div class="empty-state">
+              <div class="empty-icon">📝</div>
+              <p>提取结果将显示在这里</p>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 可拖动的分割条 -->
+      <div class="resizer" id="resizer">
+        <div class="resizer-line"></div>
+      </div>
+
+      <!-- 底部数据表格 -->
+      <div class="data-section">
+        <div class="data-header">
+          <h3>数据汇总 <span id="recordCount">(0条)</span></h3>
+          <div class="data-actions">
+            <button id="deleteSelected" class="btn btn-text btn-danger btn-small">删除选中</button>
+          </div>
+        </div>
+        <div class="group-tabs" id="groupTabs" style="display:none;">
+          <!-- 分组标签动态生成 -->
+        </div>
+        <div class="data-container">
+          <table id="dataTable">
+            <thead>
+              <tr id="tableHeader">
+                <th><input type="checkbox" id="selectAll"></th>
+                <th>序号</th>
+                <th>来源文件</th>
+              </tr>
+            </thead>
+            <tbody id="tableBody">
+              <tr class="empty-row">
+                <td colspan="100">
+                  <div class="empty-state small">
+                    <p>暂无数据</p>
+                  </div>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </main>
+  </div>
+
+  <!-- 模板编辑弹窗 -->
+  <div class="modal" id="templateModal">
+    <div class="modal-content wide">
+      <div class="modal-header">
+        <h3>字段配置</h3>
+        <button class="modal-close" id="closeModal">&times;</button>
+      </div>
+      <div class="modal-body">
+        <div class="form-row">
+          <div class="form-group half">
+            <label>配置名称</label>
+            <input type="text" id="templateName" placeholder="输入配置名称">
+          </div>
+          <div class="form-group half">
+            <label>配置文件</label>
+            <div class="btn-group">
+              <button id="importTemplateBtn" class="btn btn-secondary btn-small">📥 导入JSON</button>
+              <button id="exportTemplateBtn" class="btn btn-secondary btn-small">📤 导出JSON</button>
+              <button id="importExcelTemplate" class="btn btn-secondary btn-small">📊 从Excel导入</button>
+            </div>
+          </div>
+        </div>
+        
+        <div class="form-group">
+          <label>字段列表 
+            <span class="hint">(勾选"分表"的字段会按不同值导出到不同Excel文件或工作表)</span>
+          </label>
+          <div class="field-table">
+            <div class="field-table-header">
+              <span class="col-check">启用</span>
+              <span class="col-name">Excel列头</span>
+              <span class="col-alias">图片字段名</span>
+              <span class="col-type">类型</span>
+              <span class="col-agg" title="勾选后导出时会按此字段的不同值分成多个Excel文件或工作表">分表</span>
+              <span class="col-action">操作</span>
+            </div>
+            <div class="field-table-body" id="fieldList">
+              <!-- 字段列表动态生成 -->
+            </div>
+          </div>
+          <div class="field-actions">
+            <button id="addField" class="btn btn-text btn-small">+ 添加字段</button>
+            <button id="addFieldCommon" class="btn btn-text btn-small">+ 常用字段</button>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button id="cancelTemplate" class="btn btn-secondary">取消</button>
+        <button id="saveTemplateBtn" class="btn btn-primary">保存配置</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- OCR进度弹窗 -->
+  <div class="modal" id="progressModal">
+    <div class="modal-content small">
+      <div class="modal-header">
+        <h3>正在提取...</h3>
+      </div>
+      <div class="modal-body">
+        <div class="progress-info">
+          <span id="progressText">准备中...</span>
+          <span id="progressPercent">0%</span>
+        </div>
+        <div class="progress-bar">
+          <div class="progress-fill" id="progressFill"></div>
+        </div>
+        <button id="cancelProgress" class="btn btn-text">取消</button>
+      </div>
+    </div>
+  </div>
+
+  <script src="https://cdn.jsdelivr.net/npm/exceljs@4/dist/exceljs.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.min.js"></script>
+  <script>
+    // 设置PDF.js worker路径
+    pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/build/pdf.worker.min.js';
+  </script>
+  <script src="fieldConfig.js"></script>
+  <script src="fieldMatcher.js"></script>
+  <script src="taxParser.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,11 @@
+# 排除打包文件（太大不上传）
+dist/
+node_modules/
+
+# 排除临时文件
+*.log
+*.tmp
+.DS_Store
+
+# 排除 PaddleOCR 资源文件（太大）
+resources/PaddleOCR-json/
