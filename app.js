@@ -235,6 +235,9 @@ function bindEvents() {
   // 保存修改按钮（新增）
   document.getElementById('saveChanges').addEventListener('click', saveManualChanges);
   
+  // 撤销修正按钮（新增）
+  document.getElementById('undoChanges').addEventListener('click', undoManualChanges);
+  
   // 重新提取按钮（修正功能）
   document.getElementById('retryExtract').addEventListener('click', retryCurrentExtract);
 }
@@ -365,6 +368,22 @@ function renderImageList() {
 
 // 选择图片
 function selectImage(index) {
+  // 检查当前图片是否有未保存的修改
+  if (state.currentIndex >= 0 && state.currentIndex !== index) {
+    const currentImg = state.images[state.currentIndex];
+    if (currentImg && currentImg.hasUnsavedChanges) {
+      // 提示用户保存
+      const choice = confirm('当前图片有未保存的修改，是否保存？\n点击"确定"保存修改，点击"取消"放弃修改。');
+      if (choice) {
+        // 自动保存
+        saveManualChanges();
+      } else {
+        // 清除未保存标记
+        currentImg.hasUnsavedChanges = false;
+      }
+    }
+  }
+  
   if (index >= 0 && index < state.images.length) {
     state.currentIndex = index;
     const img = state.images[index];
@@ -431,6 +450,14 @@ function renderResult(img) {
   // 显示保存按钮（如果已经有结果）
   saveBtn.style.display = 'inline-block';
   
+  // 显示撤销修正按钮（如果已经手动修正过）
+  const undoBtn = document.getElementById('undoChanges');
+  if (img.manuallyModified && img.originalResults) {
+    undoBtn.style.display = 'inline-block';
+  } else {
+    undoBtn.style.display = 'none';
+  }
+  
   // 渲染字段
   const fields = state.template?.fields || [];
   dom.resultContainer.innerHTML = fields.filter(f => f.enabled).map(field => `
@@ -478,6 +505,11 @@ function saveManualChanges() {
   if (state.currentIndex < 0) return;
   const img = state.images[state.currentIndex];
   
+  // 保存原始结果（用于撤销）
+  if (!img.originalResults) {
+    img.originalResults = JSON.parse(JSON.stringify(img.allResults || [img.result]));
+  }
+  
   // 获取当前显示的记录
   const allRecords = img.allResults || [img.result];
   const currentRecord = allRecords[img.currentRecordIndex || 0];
@@ -500,8 +532,45 @@ function saveManualChanges() {
   const saveBtn = document.getElementById('saveChanges');
   saveBtn.classList.remove('btn-warning');
   
+  // 显示撤销按钮
+  const undoBtn = document.getElementById('undoChanges');
+  undoBtn.style.display = 'inline-block';
+  
   // 显示成功提示
   alert('✅ 修改已保存！数据汇总表格已更新，导出Excel时会包含这些修改。');
+}
+
+// 撤销手动修正
+function undoManualChanges() {
+  if (state.currentIndex < 0) return;
+  const img = state.images[state.currentIndex];
+  
+  if (!img.originalResults) {
+    alert('没有可撤销的修改');
+    return;
+  }
+  
+  // 确认操作
+  if (!confirm('确定要撤销所有手动修正吗？\n这将恢复到原始提取结果。')) {
+    return;
+  }
+  
+  // 恢复原始结果
+  img.allResults = JSON.parse(JSON.stringify(img.originalResults));
+  img.result = img.allResults[0];
+  img.currentRecordIndex = 0;
+  img.manuallyModified = false;
+  img.hasUnsavedChanges = false;
+  
+  // 更新UI
+  renderResult(img);
+  updateDataTable();
+  
+  // 隐藏撤销按钮
+  const undoBtn = document.getElementById('undoChanges');
+  undoBtn.style.display = 'none';
+  
+  alert('✅ 已恢复到原始提取结果！');
 }
 
 // 重新提取当前图片
@@ -984,12 +1053,18 @@ function renderTableBody(displayRecords, allRecords) {
     const fileName = item.fileName || item.img?.name || '';
     const totalRecords = item.totalRecords || 1;
     const recordIndex = item.recordIndex || 0;
+    const img = item.img;
+    
+    // 检查是否手动修正过
+    const isManuallyModified = img && img.manuallyModified;
+    const rowClass = isManuallyModified ? 'manually-modified' : '';
+    const rowTitle = isManuallyModified ? ' title="此记录已手动修正"' : '';
     
     return `
-      <tr>
+      <tr class="${rowClass}"${rowTitle}>
         <td><input type="checkbox" class="row-check" data-index="${index}"></td>
         <td>${index + 1}</td>
-        <td title="${fileName}${totalRecords > 1 ? ' (第' + (recordIndex + 1) + '条)' : ''}">${fileName}${totalRecords > 1 ? '<span style="color:#999">[' + (recordIndex + 1) + '/' + totalRecords + ']</span>' : ''}</td>
+        <td title="${fileName}${totalRecords > 1 ? ' (第' + (recordIndex + 1) + '条)' : ''}">${fileName}${totalRecords > 1 ? '<span style="color:#999">[' + (recordIndex + 1) + '/' + totalRecords + ']</span>' : ''}${isManuallyModified ? '<span style="color:#ff9800;margin-left:4px;" title="已手动修正">✏️</span>' : ''}</td>
         ${headers.map(h => `<td>${record?.[h] || ''}</td>`).join('')}
       </tr>
     `;

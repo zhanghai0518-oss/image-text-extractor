@@ -1,6 +1,6 @@
 {
   "name": "image-text-extractor",
-  "version": "2.9.20",
+  "version": "2.9.21",
   "description": "图片文字提取工具 - 支持批量处理、字段配置、Excel导出、PDF支持、跨平台OCR",
   "main": "main.js",
   "scripts": {
