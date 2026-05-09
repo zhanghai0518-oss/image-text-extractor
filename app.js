@@ -458,9 +458,24 @@ function renderResult(img) {
     undoBtn.style.display = 'none';
   }
   
-  // 渲染字段
-  const fields = state.template?.fields || [];
-  dom.resultContainer.innerHTML = fields.filter(f => f.enabled).map(field => `
+  // 渲染字段 - 支持自定义配置
+  let fields = [];
+  if (state.fieldConfig) {
+    // 使用自定义字段配置
+    fields = state.fieldConfig.filter(f => f.enabled !== false).map(f => ({
+      name: f.columnHeader,
+      alias: f.fieldName,
+      description: f.description || ''
+    }));
+  } else if (state.template) {
+    // 使用旧模板格式
+    fields = state.template.fields.filter(f => f.enabled).map(f => ({
+      name: f.name,
+      alias: f.alias || f.name
+    }));
+  }
+  
+  dom.resultContainer.innerHTML = fields.map(field => `
     <div class="result-field">
       <span class="label">${field.name}</span>
       <span class="value">
@@ -924,11 +939,10 @@ async function onTemplateChange(e) {
 function updateTableHeader() {
   let headers = ['序号', '来源文件'];
   
+  // ✅ 修改：优先使用自定义字段配置
   if (state.fieldConfig) {
-    // 使用新配置格式
     headers.push(...state.fieldConfig.filter(f => f.enabled !== false).map(f => f.columnHeader));
   } else if (state.template) {
-    // 使用旧模板格式
     headers.push(...state.template.fields.filter(f => f.enabled).map(f => f.name));
   }
   
@@ -1039,7 +1053,7 @@ function renderTableBody(displayRecords, allRecords) {
     return;
   }
   
-  // 获取列头
+  // 获取列头 - 优先使用自定义字段配置
   let headers = [];
   if (state.fieldConfig) {
     headers = state.fieldConfig.filter(f => f.enabled !== false).map(f => f.columnHeader);
@@ -1073,8 +1087,9 @@ function renderTableBody(displayRecords, allRecords) {
 
 // 提取全部
 async function extractAll() {
-  if (!state.template) {
-    alert('请先选择模板');
+  // ✅ 修改：检查字段配置或模板，至少有一个即可
+  if (!state.fieldConfig && !state.template) {
+    alert('请先配置提取字段或选择模板');
     return;
   }
   
@@ -1355,8 +1370,11 @@ function parseExtractedText(text, filename = '', isPDF = false) {
   // 修正OCR错误
   text = correctOCRErrors(text);
   
-  // PDF文件：使用字段配置匹配器（支持动态识别税种）
-  if (isPDF && window.FieldMatcher) {
+  // 🎯 关键修改：优先使用通用字段匹配器（支持自定义配置）
+  // 无论PDF还是图片，只要有字段配置，就用FieldMatcher
+  if (window.FieldMatcher && state.fieldConfig) {
+    console.log('[parseExtractedText] 使用通用字段匹配器（自定义配置）');
+    
     // 显示提取过程日志
     const logs = [];
     const matcher = window.FieldMatcher;
@@ -1366,8 +1384,8 @@ function parseExtractedText(text, filename = '', isPDF = false) {
       originalLog(...args);
     };
     
-    // 传入字段配置（如果有），否则使用默认字段列表
-    const result = matcher.match(text, state.fieldConfig || null);
+    // 传入用户自定义的字段配置
+    const result = matcher.match(text, state.fieldConfig);
     
     // 恢复原始日志函数
     matcher.log = originalLog;
@@ -1375,39 +1393,75 @@ function parseExtractedText(text, filename = '', isPDF = false) {
     // 在结果区域显示提取日志
     showExtractLogs(logs, filename);
     
-    // 处理新的返回格式（包含验证信息）
+    // 处理返回格式
     let records = result.records || result;
     const validation = result.validation;
     
-    // 显示验证结果
+    // 显示验证结果（如果有）
     if (validation && !validation.valid) {
       console.warn('[验证]', validation.message);
-      // 在界面上显示验证警告
       showValidationWarning(validation);
     } else if (validation && validation.valid) {
       console.log('[验证]', validation.message);
     }
     
-    // 检查记录是否有效 - 关键字段不能全为空
+    // 检查记录是否有效
+    if (records && records.length > 0) {
+      // 根据用户配置的字段判断有效性
+      const enabledFields = state.fieldConfig.filter(f => f.enabled !== false).map(f => f.columnHeader);
+      const hasValidData = records.some(r => {
+        return enabledFields.some(field => r[field] && r[field].length > 0);
+      });
+      
+      if (hasValidData) {
+        console.log('[parseExtractedText] 自定义配置提取成功:', records.length, '条');
+        return records;
+      }
+    }
+    
+    console.log('[parseExtractedText] 自定义配置提取失败，尝试回退方案');
+  }
+  
+  // 🔄 回退方案1：如果是PDF且有FieldMatcher，用默认配置
+  if (isPDF && window.FieldMatcher) {
+    console.log('[parseExtractedText] PDF回退：使用FieldMatcher默认配置');
+    
+    const logs = [];
+    const matcher = window.FieldMatcher;
+    const originalLog = matcher.log.bind(matcher);
+    matcher.log = (...args) => {
+      logs.push(args.join(' '));
+      originalLog(...args);
+    };
+    
+    const result = matcher.match(text, null); // 使用默认配置
+    matcher.log = originalLog;
+    showExtractLogs(logs, filename);
+    
+    let records = result.records || result;
+    const validation = result.validation;
+    
+    if (validation && !validation.valid) {
+      console.warn('[验证]', validation.message);
+      showValidationWarning(validation);
+    }
+    
     if (records && records.length > 0) {
       const hasValidData = records.some(r => {
-        // 检查是否有至少一个关键字段有值
         return (r['所属公司'] && r['所属公司'].length > 2) ||
                (r['金额'] && r['金额'].length > 0) ||
                (r['税种名称'] && r['税种名称'].length > 0);
       });
       
       if (hasValidData) {
-        // 备注字段只保留原始提取的内容，不再追加来源信息
-        console.log('[parseExtractedText] FieldMatcher返回有效记录:', records.length, '条');
+        console.log('[parseExtractedText] PDF默认配置提取成功');
         return records;
-      } else {
-        console.log('[parseExtractedText] FieldMatcher返回的记录关键字段为空，回退到TaxParser');
       }
     }
   }
   
-  // 图片文件：使用增强版TaxParser（针对Vision OCR文本优化）
+  // 🔄 回退方案2：使用硬编码的税务凭证解析器（仅作为最后手段）
+  // 注意：这只是兼容旧数据的回退方案，不应该依赖它
   if (window.TaxParser) {
     const records = window.TaxParser.parse(text, filename);
     if (records && records.length > 0) {
