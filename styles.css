@@ -736,3 +736,37 @@ tr:hover td {
   gap: 8px;
   flex-wrap: wrap;
 }
+
+/* 记录导航样式 */
+.record-indicator {
+  padding: 4px 12px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  font-size: 12px;
+  color: #666;
+  font-weight: 500;
+}
+
+.result-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+/* 手动修正标记 */
+.manually-modified {
+  background-color: #fff3e0 !important;
+}
+
+.manually-modified td {
+  border-left: 3px solid #ff9800;
+}
+
+/* 验证通过标记 */
+.validation-pass {
+  font-size: 12px;
+}
+
+.validation-fail {
+  font-size: 12px;
+}

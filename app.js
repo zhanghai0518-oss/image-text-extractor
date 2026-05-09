@@ -227,6 +227,16 @@ function bindEvents() {
   
   // 选择全部复选框
   document.getElementById('selectAll').addEventListener('change', toggleSelectAll);
+  
+  // 翻条按钮（新增）
+  document.getElementById('prevRecord').addEventListener('click', () => navigateRecord(-1));
+  document.getElementById('nextRecord').addEventListener('click', () => navigateRecord(1));
+  
+  // 保存修改按钮（新增）
+  document.getElementById('saveChanges').addEventListener('click', saveManualChanges);
+  
+  // 重新提取按钮（修正功能）
+  document.getElementById('retryExtract').addEventListener('click', retryCurrentExtract);
 }
 
 // 导入图片
@@ -371,7 +381,7 @@ function selectImage(index) {
   }
 }
 
-// 渲染提取结果
+// 渲染提取结果（支持多条记录翻条）
 function renderResult(img) {
   if (!img.result || Object.keys(img.result).length === 0) {
     dom.resultContainer.innerHTML = `
@@ -380,9 +390,48 @@ function renderResult(img) {
         <p>点击"提取全部"开始识别</p>
       </div>
     `;
+    // 隐藏翻条按钮
+    document.getElementById('prevRecord').style.display = 'none';
+    document.getElementById('nextRecord').style.display = 'none';
+    document.getElementById('recordIndicator').style.display = 'none';
+    document.getElementById('saveChanges').style.display = 'none';
     return;
   }
   
+  // 初始化当前记录索引
+  if (!img.currentRecordIndex && img.currentRecordIndex !== 0) {
+    img.currentRecordIndex = 0;
+  }
+  
+  // 获取当前要显示的记录
+  const allRecords = img.allResults || [img.result];
+  const currentRecord = allRecords[img.currentRecordIndex] || img.result;
+  const totalRecords = allRecords.length;
+  const currentIndex = img.currentRecordIndex + 1;
+  
+  // 显示/隐藏翻条按钮
+  const prevBtn = document.getElementById('prevRecord');
+  const nextBtn = document.getElementById('nextRecord');
+  const indicator = document.getElementById('recordIndicator');
+  const saveBtn = document.getElementById('saveChanges');
+  
+  if (totalRecords > 1) {
+    prevBtn.style.display = 'inline-block';
+    nextBtn.style.display = 'inline-block';
+    indicator.style.display = 'inline-block';
+    indicator.textContent = `${currentIndex}/${totalRecords}`;
+    prevBtn.disabled = img.currentRecordIndex === 0;
+    nextBtn.disabled = img.currentRecordIndex === totalRecords - 1;
+  } else {
+    prevBtn.style.display = 'none';
+    nextBtn.style.display = 'none';
+    indicator.style.display = 'none';
+  }
+  
+  // 显示保存按钮（如果已经有结果）
+  saveBtn.style.display = 'inline-block';
+  
+  // 渲染字段
   const fields = state.template?.fields || [];
   dom.resultContainer.innerHTML = fields.filter(f => f.enabled).map(field => `
     <div class="result-field">
@@ -390,19 +439,181 @@ function renderResult(img) {
       <span class="value">
         <input type="text" 
                data-field="${field.name}" 
-               value="${img.result[field.name] || ''}"
+               value="${currentRecord[field.name] || ''}"
                placeholder="${field.alias || field.name}">
       </span>
     </div>
   `).join('');
   
-  // 绑定输入事件
+  // 绑定输入事件（实时更新当前记录）
   dom.resultContainer.querySelectorAll('input').forEach(input => {
     input.addEventListener('change', (e) => {
-      img.result[e.target.dataset.field] = e.target.value;
-      updateDataTable();
+      const fieldName = e.target.dataset.field;
+      currentRecord[fieldName] = e.target.value;
+      // 标记为已修改（未保存）
+      img.hasUnsavedChanges = true;
+      saveBtn.classList.add('btn-warning');
     });
   });
+}
+
+// 翻条功能（上一条/下一条）
+function navigateRecord(direction) {
+  if (state.currentIndex < 0) return;
+  const img = state.images[state.currentIndex];
+  
+  if (!img.allResults || img.allResults.length <= 1) return;
+  
+  // 计算新索引
+  const newIndex = img.currentRecordIndex + direction;
+  if (newIndex < 0 || newIndex >= img.allResults.length) return;
+  
+  // 更新索引并重新渲染
+  img.currentRecordIndex = newIndex;
+  renderResult(img);
+}
+
+// 保存手动修改
+function saveManualChanges() {
+  if (state.currentIndex < 0) return;
+  const img = state.images[state.currentIndex];
+  
+  // 获取当前显示的记录
+  const allRecords = img.allResults || [img.result];
+  const currentRecord = allRecords[img.currentRecordIndex || 0];
+  
+  // 收集所有输入框的值
+  const inputs = dom.resultContainer.querySelectorAll('input');
+  inputs.forEach(input => {
+    const fieldName = input.dataset.field;
+    currentRecord[fieldName] = input.value;
+  });
+  
+  // 更新数据汇总表格
+  updateDataTable();
+  
+  // 标记为手动修正
+  img.manuallyModified = true;
+  img.hasUnsavedChanges = false;
+  
+  // 更新按钮状态
+  const saveBtn = document.getElementById('saveChanges');
+  saveBtn.classList.remove('btn-warning');
+  
+  // 显示成功提示
+  alert('✅ 修改已保存！数据汇总表格已更新，导出Excel时会包含这些修改。');
+}
+
+// 重新提取当前图片
+async function retryCurrentExtract() {
+  if (state.currentIndex < 0) return;
+  
+  const img = state.images[state.currentIndex];
+  
+  // 确认操作
+  if (!confirm(`确定要重新提取 "${img.name}" 吗？\n这将覆盖当前的提取结果。`)) {
+    return;
+  }
+  
+  // 清空之前的结果
+  img.result = null;
+  img.allResults = null;
+  img.currentRecordIndex = 0;
+  img.status = 'pending';
+  img.validation = null;
+  img.ocrText = null;
+  
+  // 更新UI
+  renderImageList();
+  dom.resultContainer.innerHTML = `
+    <div class="empty-state">
+      <div class="empty-icon">⏳</div>
+      <p>正在重新提取...</p>
+    </div>
+  `;
+  
+  try {
+    // 重新执行OCR和提取
+    let text = '';
+    let tempFilePath = null;
+    
+    // PDF文件：直接用提取的文本
+    if (img.isPDF && img.pdfText) {
+      text = img.pdfText;
+      console.log(`[重新提取-PDF] 文本长度: ${text.length}`);
+    } else {
+      // 图片文件：使用OCR
+      let imagePath = img.path;
+      
+      // 如果是PDF转换的图片或没有路径，需要先保存到临时文件
+      if (img.isPDF || !img.path || img.path.endsWith('.pdf')) {
+        const base64Data = img.data.split(',')[1] || img.data;
+        const tempResult = await window.electronAPI.saveTempImage(base64Data);
+        if (tempResult.success) {
+          imagePath = tempResult.path;
+          tempFilePath = tempResult.path;
+        } else {
+          throw new Error('保存临时文件失败: ' + tempResult.error);
+        }
+      }
+      
+      // 调用OCR
+      const result = await window.electronAPI.ocrImage(imagePath);
+      
+      // 清理临时文件
+      if (tempFilePath) {
+        await window.electronAPI.deleteTempFile(tempFilePath);
+      }
+      
+      if (result.success) {
+        text = result.text;
+        console.log(`[重新提取-OCR] 文本长度: ${text.length}`);
+      } else {
+        throw new Error(result.error || 'OCR识别失败');
+      }
+    }
+    
+    // 解析文本提取字段
+    const isPDF = img.isPDF || false;
+    const records = parseExtractedText(text, img.name, isPDF);
+    
+    if (Array.isArray(records) && records.length > 0) {
+      img.result = records[0];
+      img.allResults = records;
+      img.currentRecordIndex = 0;
+      img.status = 'done';
+      img.ocrText = text;
+      
+      // 数据校验
+      const totalAmount = extractTotalAmount(text);
+      const validation = validateRecords(img.allResults, text, totalAmount);
+      img.validation = validation;
+    } else {
+      img.result = records[0] || {};
+      img.status = 'done';
+    }
+    
+    // 更新UI
+    renderImageList();
+    renderResult(img);
+    updateDataTable();
+    
+    alert('✅ 重新提取完成！');
+    
+  } catch (err) {
+    console.error('重新提取失败:', err);
+    img.status = 'error';
+    img.result = { error: err.message };
+    renderImageList();
+    
+    dom.resultContainer.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">❌</div>
+        <p>重新提取失败</p>
+        <p style="color: #999; font-size: 12px; margin-top: 8px;">${err.message}</p>
+      </div>
+    `;
+  }
 }
 
 // 显示提取日志在界面上
@@ -698,8 +909,8 @@ function updateDataTable() {
     const aggregateFields = window.FieldConfigManager.getAggregateFields();
     
     if (aggregateFields.length > 0 && allRecords.length > 0) {
-      // 按aggregate字段分组
-      const groups = window.FieldConfigManager.groupByAggregate(allRecords.map(r => r.record));
+      // 按aggregate字段分组（保留完整对象，包括fileName）
+      const groups = window.FieldConfigManager.groupByAggregate(allRecords, 'record');
       
       // 渲染分组标签
       renderGroupTabs(groups, aggregateFields[0].columnHeader);

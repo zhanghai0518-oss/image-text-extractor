@@ -66,12 +66,14 @@ class FieldConfigManager {
 
   /**
    * 按aggregate字段分组数据
+   * @param {Array} items - 可以是record数组，也可以是包含record的完整对象数组
+   * @param {string} groupFieldPath - 如果items是完整对象，指定record在对象中的路径（如'record'）
    */
-  groupByAggregate(records) {
+  groupByAggregate(items, groupFieldPath = null) {
     const aggregateFields = this.getAggregateFields();
     
     if (aggregateFields.length === 0) {
-      return { '__all__': records };
+      return { '__all__': items };
     }
 
     const groups = {};
@@ -79,12 +81,15 @@ class FieldConfigManager {
     // 使用第一个aggregate字段分组
     const groupField = aggregateFields[0].columnHeader;
     
-    records.forEach(record => {
+    items.forEach(item => {
+      // 如果指定了路径，从item中提取record；否则item就是record
+      const record = groupFieldPath ? item[groupFieldPath] : item;
       const key = record[groupField] || '未分类';
       if (!groups[key]) {
         groups[key] = [];
       }
-      groups[key].push(record);
+      // 保留完整的item对象（包含fileName等信息）
+      groups[key].push(item);
     });
     
     this.log('分组结果:', Object.keys(groups), '组');
